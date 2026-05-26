@@ -1,15 +1,14 @@
 import streamlit as st
 import pandas as pd
-import database as db
 from datetime import datetime, date
 import base64
 import socket
 import time
 import uuid # Importante para gerar IDs únicos
+import requests
 
 # --- CONFIGURAÇÃO ---
 st.set_page_config(layout="wide", page_title="Notas Fiscais", initial_sidebar_state="collapsed")
-db.init_db()
 
 # --- FUNÇÕES AUXILIARES ---
 def get_user_machine():
@@ -97,10 +96,51 @@ for campo in campos_data:
     if campo not in st.session_state: st.session_state[campo] = DATA_PADRAO
 
 if 'ultimo_arquivo' not in st.session_state: st.session_state['ultimo_arquivo'] = ""
-if 'msg_topo' not in st.session_state: st.session_state['msg_topo'] = None 
+if 'msg_topo' not in st.session_state: st.session_state['msg_topo'] = None
+if 'uploader_key' not in st.session_state: st.session_state['uploader_key'] = 0
 
 # --- CARREGAMENTO DE DADOS (TOPO) ---
-df = db.carregar_dados()
+try:
+    resposta_historico = requests.get("http://127.0.0.1:8000/ultimas-notas")
+    if resposta_historico.status_code == 200:
+        dados_tabela = resposta_historico.json().get("dados", [])
+        if dados_tabela:
+            df = pd.DataFrame(dados_tabela)
+            
+            # Traduz as colunas do banco de dados para as variáveis do Front
+            mapeamento_colunas = {
+                "Numero_Nota": "num_nota",
+                "Data_Emissao": "data_emissao",
+                "CNPJ_Prestador": "cnpj_fornecedor",
+                "CNPJ_Tomador": "cnpj_tomador",
+                "Contrato": "id_contrato",
+                "Pedido": "num_pedido",
+                "Valor_Total": "valor_nf"
+            }
+            df = df.rename(columns=mapeamento_colunas)
+            
+            # Cria as colunas que não existem no banco para a tabela não quebrar
+            for col in ["emp_tomador", "razao_fornecedor", "num_requisicao", "observacao", "data_vencimento", "envio_pgto"]:
+                if col not in df.columns:
+                    df[col] = None
+        else:
+            df = pd.DataFrame()
+    else:
+        df = pd.DataFrame()
+except:
+    df = pd.DataFrame()
+
+# Fallback de segurança: Se o banco estiver vazio ou a API fora, monta as colunas zeradas
+if df.empty:
+    df = pd.DataFrame(columns=[
+        "id", "emp_tomador", "cnpj_tomador", "cnpj_fornecedor", "razao_fornecedor",
+        "num_nota", "num_requisicao", "id_contrato", "num_pedido", "observacao",
+        "valor_nf", "data_emissao", "data_vencimento", "envio_pgto"
+    ])
+
+# Força as colunas de data a serem do tipo Datetime para o filtro funcionar
+for col in ["data_emissao", "data_vencimento", "envio_pgto"]:
+    df[col] = pd.to_datetime(df[col], errors='coerce')
 
 # Filtros
 df_show = df.copy()
@@ -161,6 +201,8 @@ def reset_form_callback():
     for c in campos_valor: st.session_state[c] = 0.0
     for c in campos_data: st.session_state[c] = DATA_PADRAO
     st.session_state['msg_topo'] = None
+    st.session_state['ultimo_arquivo'] = ""
+    st.session_state['uploader_key'] += 1
     if "tabela_full" in st.session_state: del st.session_state["tabela_full"]
 
 def salvar_callback():
@@ -171,31 +213,31 @@ def salvar_callback():
         st.session_state['msg_topo'] = ("Data de Emissão é obrigatória.", "warning")
         return
 
-    final_data = {}
-    for k in campos_texto:
-        if k != "id": final_data[k] = st.session_state[k]
-    for k in campos_valor: final_data[k] = st.session_state[k]
-    for k in campos_data:
-        d = st.session_state[k]
-        final_data[k] = d.strftime("%Y-%m-%d") if d else None
+    # 1. Monta o pacote de dados exatamente com os nomes que o Banco SQLite espera
+    payload_bd = {
+        "num_nota": st.session_state.get("num_nota", ""),
+        "data_emissao": st.session_state["data_emissao"].strftime("%Y-%m-%d") if st.session_state.get("data_emissao") else None,
+        "cnpj_fornecedor": st.session_state.get("cnpj_fornecedor", ""),
+        "cnpj_tomador": st.session_state.get("cnpj_tomador", ""),
+        "id_contrato": st.session_state.get("id_contrato", ""),
+        "num_pedido": st.session_state.get("num_pedido", ""),
+        "valor_nf": float(st.session_state.get("valor_nf", 0.0)),
+        # Captura o nome do arquivo que está na tela (se existir)
+        "nome_arquivo": st.session_state.get("ultimo_arquivo", "Inclusao_Manual")
+    }
 
-    # Lógica de ID: 
-    # Se existe ID no state, é edição. 
-    # Se não existe, geramos um UUID novo para evitar duplicidade ou NULL.
-    id_atual = st.session_state.get('id')
-    if id_atual:
-        final_data['id'] = id_atual
-        msg_acao = "atualizada"
-    else:
-        final_data['id'] = str(uuid.uuid4())
-        msg_acao = "salva"
+    try:
+        # 2. Envia para a Sala de Espera (API)
+        resposta = requests.post("http://127.0.0.1:8000/salvar-bd", json=payload_bd)
         
-    final_data['responsavel'] = usuario_atual
-    final_data['data_registro'] = datetime.now()
-
-    db.salvar_nota(final_data)
-    st.session_state['msg_topo'] = (f"Nota {msg_acao} com Sucesso!", "success")
-    reset_form_callback()
+        if resposta.status_code == 200:
+            st.session_state['msg_topo'] = ("Nota salva na fila com sucesso!", "success")
+            reset_form_callback()
+        else:
+            st.session_state['msg_topo'] = (f"Erro ao salvar: {resposta.text}", "warning")
+            
+    except Exception as e:
+        st.session_state['msg_topo'] = ("Sem conexão com o servidor para salvar.", "warning")
 
 def buscar_callback():
     st.session_state['msg_topo'] = ("Filtro Aplicado!", "warning")
@@ -203,23 +245,81 @@ def buscar_callback():
 # --- UI: TOPO ---
 c1, c2, c3 = st.columns([0.25, 0.50, 0.25], gap="small", vertical_alignment="center")
 with c1: st.markdown("##### :material/factory: Entrada de Notas")
-with c2: uploaded_file = st.file_uploader("Upload", type="pdf", label_visibility="collapsed")
+with c2: uploaded_file = st.file_uploader("Upload", type="pdf", label_visibility="collapsed", key=str(st.session_state['uploader_key']))
 with c3: st.markdown(f"<div style='text-align:right; white-space:nowrap;'>👤 <b>{usuario_atual}</b></div>", unsafe_allow_html=True)
 
 # EXTRAÇÃO AUTOMÁTICA
 if uploaded_file and uploaded_file.name != st.session_state['ultimo_arquivo']:
-    reset_form_callback()
-    st.session_state['num_nota'] = "12345"
-    st.session_state['razao_fornecedor'] = "Fornecedor Detectado Ltda"
-    st.session_state['valor_nf'] = 1550.00
-    st.session_state['data_emissao'] = date.today()
-    st.session_state['ultimo_arquivo'] = uploaded_file.name
-    st.session_state['msg_topo'] = ("Dados extraídos do PDF!", "warning")
+    # Limpa apenas os campos de texto e valores antes de ler o PDF novo (sem matar o uploader)
+    for c in campos_texto: st.session_state[c] = ""
+    for c in campos_valor: st.session_state[c] = 0.0
+    for c in campos_data: st.session_state[c] = DATA_PADRAO
+    
+    with st.spinner("Robô analisando a nota fiscal... Isso leva alguns segundos."):
+        files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")}
+        
+        try:
+            resposta = requests.post("http://127.0.0.1:8000/extrair-pdf", files=files)
+            
+            if resposta.status_code == 200:
+                resultado = resposta.json()
+                
+                # SEGURO CONTRA NULOS: Se vier vazio, vira um dicionário vazio para não quebrar o código
+                dados_api = resultado.get("dados") or {} 
+                
+                # ==========================================================
+                # MODO RAIO-X: Isso vai imprimir o JSON cru na tela lateral 
+                # para podermos ver EXATAMENTE os nomes das chaves do seu backend
+                st.sidebar.markdown("### 🔎 Raio-X do Backend:")
+                st.sidebar.json(dados_api)
+                # ==========================================================
+                
+                # 3. Preenchimento Inteligente (Tenta a chave do seu Backend e a do Front)
+                st.session_state['cnpj_tomador'] = str(dados_api.get('CNPJ_Tomador', dados_api.get('cnpj_tomador', '')))
+                st.session_state['emp_tomador'] = str(dados_api.get('Empresa_Tomador', dados_api.get('emp_tomador', '')))
+                st.session_state['cnpj_fornecedor'] = str(dados_api.get('CNPJ_Prestador', dados_api.get('cnpj_fornecedor', '')))
+                st.session_state['razao_fornecedor'] = str(dados_api.get('Razao_Prestador', dados_api.get('razao_fornecedor', '')))
+                st.session_state['num_nota'] = str(dados_api.get('Numero_Nota', dados_api.get('num_nota', '')))
+                st.session_state['id_contrato'] = str(dados_api.get('Contrato', dados_api.get('id_contrato', '')))
+                st.session_state['num_pedido'] = str(dados_api.get('Pedido', dados_api.get('num_pedido', '')))
+                
+                # Trata o valor
+                try:
+                    valor = dados_api.get('Valor_Total', dados_api.get('valor_nf', 0.0))
+                    # Limpa formatação brasileira se vier como string (ex: "1.500,00" -> 1500.00)
+                    if isinstance(valor, str):
+                        valor = valor.replace(".", "").replace(",", ".")
+                    st.session_state['valor_nf'] = float(valor) if valor else 0.0
+                except:
+                    st.session_state['valor_nf'] = 0.0
+                
+                # Trata as datas
+                from datetime import datetime
+                for campo_front, campo_back in [('data_emissao', 'Data_Emissao'), ('data_vencimento', 'Data_Vencimento'), ('envio_pgto', 'Envio_Pgto')]:
+                    val_data = dados_api.get(campo_back, dados_api.get(campo_front))
+                    if val_data:
+                        try:
+                            # Tenta ler formato AAAA-MM-DD
+                            st.session_state[campo_front] = datetime.strptime(val_data[:10], "%Y-%m-%d").date()
+                        except:
+                            try:
+                                # Tenta ler formato DD/MM/AAAA
+                                st.session_state[campo_front] = datetime.strptime(val_data[:10], "%d/%m/%Y").date()
+                            except:
+                                pass # Deixa vazio se não entender o formato
 
-if st.session_state['msg_topo']:
-    msg, tipo = st.session_state['msg_topo']
-    show_custom_message(msg, tipo)
-    st.session_state['msg_topo'] = None 
+                st.session_state['ultimo_arquivo'] = uploaded_file.name
+                st.session_state['msg_topo'] = ("Nota analisada com sucesso!", "success")
+                
+            else:
+                st.session_state['msg_topo'] = (f"Falha na leitura. Código: {resposta.status_code}", "warning")
+                st.session_state['ultimo_arquivo'] = uploaded_file.name
+                
+        except Exception as e:
+            st.session_state['msg_topo'] = (f"Erro interno no Front: {e}", "warning")
+            st.session_state['ultimo_arquivo'] = uploaded_file.name
+            
+    st.rerun()
 
 # --- UI: PRINCIPAL ---
 col_form, col_doc = st.columns([1, 1.5], gap="small")
