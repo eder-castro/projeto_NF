@@ -11,8 +11,7 @@ import re
 from text_pdf import extrair_dados_PDFSelecionavel
 from image_pdf import executa_PDFImg
 from export import salvar_no_excel
-
-NOME_BANCO = "fila_notas.db"
+from config import NOME_PLANILHA, NOME_BANCO
 
 # --- 1. CONFIGURAÇÃO DO BANCO DE DADOS TEMPORÁRIO (A SALA DE ESPERA) ---
 def inicializar_banco():
@@ -23,6 +22,7 @@ def inicializar_banco():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             Numero_Nota TEXT,
             Data_Emissao TEXT,
+            Data_Vencimento TEXT,
             CNPJ_Prestador TEXT,
             CNPJ_Tomador TEXT,
             Contrato TEXT,
@@ -103,7 +103,7 @@ def buscar_razao_social_no_excel(cnpj_procurado):
     print(f"🔎 [DEBUG] CNPJ para pesquisa (sem zeros à esquerda): '{cnpj_limpo}'")
     
     try:
-        df = pd.read_excel("CONTROLE FLUXO ORIGINAL.xlsx", sheet_name="Cadastro Fornecedor e Tomador")
+        df = pd.read_excel(NOME_PLANILHA, sheet_name="Cadastro Fornecedor e Tomador")
         
         # 2. Limpa a coluna do Excel: remove '.0', remove não-números e tira zeros à esquerda
         df['CNPJ_STR'] = df['CNPJ'].astype(str).str.replace(r'\.0$', '', regex=True)
@@ -187,9 +187,9 @@ async def salvar_bd(dados: dict):
         # Importante: As chaves do dicionário devem bater com o que o Front enviar
         cursor.execute("""
             INSERT INTO notas 
-            (Numero_Nota, Data_Emissao, CNPJ_Prestador, CNPJ_Tomador, Contrato, Pedido, Valor_Total, Nome_Arquivo)
+            (Numero_Nota, Data_Emissao, Data_Vencimento, CNPJ_Prestador, CNPJ_Tomador, Contrato, Pedido, Valor_Total, Nome_Arquivo)
             VALUES 
-            (:num_nota, :data_emissao, :cnpj_fornecedor, :cnpj_tomador, :id_contrato, :num_pedido, :valor_nf, :nome_arquivo)
+            (:num_nota, :data_emissao, :data_vencimento, :cnpj_fornecedor, :cnpj_tomador, :id_contrato, :num_pedido, :valor_nf, :nome_arquivo)
         """, dados) 
         
         conn.commit()

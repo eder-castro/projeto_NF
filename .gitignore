@@ -182,8 +182,11 @@ cython_debug/
 # --- NOSSOS ARQUIVOS PERSONALIZADOS ---
 *.db
 fila_notas.db
-*.xlsx
 *.csv
 *.pdf
 temp_*.pdf
 temp_*.png
+
+# Ignora todos os excels genéricos, mas permite a planilha oficial
+*.xlsx
+!PLANILHA DE CONTROLE.xlsx

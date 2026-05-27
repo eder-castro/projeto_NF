@@ -150,7 +150,7 @@ for campo in campos_texto:
     valor = st.session_state.get(campo, "")
     if valor:
         filtro_ativo = True
-        df_show = df_show[df_show[campo].astype(str).str.contains(valor, case=False, na=False)]
+        df_show = df_show[df_show[campo].astype(str).str.contains(valor, case=False, na=False, regex=False)]
 
 valor_nf = st.session_state.get('valor_nf', 0.0)
 if valor_nf > 0:
@@ -220,6 +220,7 @@ def salvar_callback():
         "cnpj_tomador": st.session_state.get("cnpj_tomador", ""),
         "id_contrato": st.session_state.get("id_contrato", ""),
         "num_pedido": st.session_state.get("num_pedido", ""),
+        "data_vencimento": str(st.session_state.get('data_vencimento', '')),
         "valor_nf": float(st.session_state.get("valor_nf", 0.0)),
         # Captura o nome do arquivo que está na tela (se existir)
         "nome_arquivo": st.session_state.get("ultimo_arquivo", "Inclusao_Manual")

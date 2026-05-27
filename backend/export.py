@@ -4,6 +4,7 @@ from datetime import datetime
 from dateutil import parser
 import xlwings as xw
 import pandas as pd
+from config import NOME_PLANILHA
 
 # --- Mapeamento das colunas ---
 COLUNAS_MAPEAMENTO = {
@@ -15,6 +16,7 @@ COLUNAS_MAPEAMENTO = {
     'CNPJ Fornecedor': {'dict_key': 'CNPJ_Prestador', 'type': str},
     'NF': {'dict_key': 'Numero_Nota', 'type': int},
     'Data NF': {'dict_key': 'Data_Emissao', 'type': str},
+    'Dt Venc': {'dict_key': 'Data_Vencimento', 'type': str},
     'Valor NF': {'dict_key': 'Valor_Total', 'type': float},
     'Observação': {'dict_key': 'Observacao', 'type': str}
 }
@@ -81,7 +83,7 @@ def formatar_valor_para_planilha(excel_col_name, value, expected_type):
 
     return str(value).strip()
 
-def salvar_no_excel(lista_dados, arquivo_excel="CONTROLE FLUXO ORIGINAL.xlsx", sheet_name="#NFs#", header_row=1):
+def salvar_no_excel(lista_dados, arquivo_excel=NOME_PLANILHA, sheet_name="#NFs#", header_row=1):
     if not lista_dados:
         print("[EXPORT] Nenhuma nota para processar.")
         return
