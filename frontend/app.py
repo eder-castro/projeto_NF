@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import base64
 import socket
-import time
 import uuid # Importante para gerar IDs únicos
 import requests
 
@@ -307,6 +306,20 @@ if uploaded_file and uploaded_file.name != st.session_state['ultimo_arquivo']:
                                 st.session_state[campo_front] = datetime.strptime(val_data[:10], "%d/%m/%Y").date()
                             except:
                                 pass # Deixa vazio se não entender o formato
+                # --- NOVO: REGRA DE VENCIMENTO (+28 DIAS ÚTEIS) ---
+                data_em = st.session_state.get('data_emissao')
+                # Verifica se a data de emissão foi preenchida corretamente
+                if data_em and hasattr(data_em, 'year'):
+                    # 1. Faz o cálculo base dos 28 dias
+                    data_venc = data_em + timedelta(days=28)
+                    
+                    # 2. Empurra para segunda-feira se for final de semana
+                    if data_venc.weekday() == 5: # Caiu no Sábado
+                        data_venc += timedelta(days=2)
+                    elif data_venc.weekday() == 6: # Caiu no Domingo
+                        data_venc += timedelta(days=1)
+                        
+                    st.session_state['data_vencimento'] = data_venc
 
                 st.session_state['ultimo_arquivo'] = uploaded_file.name
                 st.session_state['msg_topo'] = ("Nota analisada com sucesso!", "success")

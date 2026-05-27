@@ -7,14 +7,16 @@ import pandas as pd
 
 # --- Mapeamento das colunas ---
 COLUNAS_MAPEAMENTO = {
+    'Envio Pgto.': {'dict_key': 'Envio_Pgto', 'type': str},
+    'CNPJ Tomador': {'dict_key': 'CNPJ_Tomador', 'type': str},
+    'RC': {'dict_key': 'Num_Requisicao', 'type': str},
+    'ID do Ctr': {'dict_key': 'Contrato', 'type': str},
+    'Pedido': {'dict_key': 'Pedido', 'type': str},
+    'CNPJ Fornecedor': {'dict_key': 'CNPJ_Prestador', 'type': str},
     'NF': {'dict_key': 'Numero_Nota', 'type': int},
-    'Data NF': {'dict_key': 'Data_Emissao', 'type': datetime},
-    'CNPJ': {'dict_key': 'CNPJ_Prestador', 'type': int},
-    'CNPJ/CPF Tomador': {'dict_key': 'CNPJ_Tomador', 'type': int},
-    'Contrato': {'dict_key': 'Contrato', 'type': int},
-    'Pedido': {'dict_key': 'Pedido', 'type': int},
+    'Data NF': {'dict_key': 'Data_Emissao', 'type': str},
     'Valor NF': {'dict_key': 'Valor_Total', 'type': float},
-    'Nome do Arquivo': {'dict_key': 'Nome_Arquivo', 'type': str}
+    'Observação': {'dict_key': 'Observacao', 'type': str}
 }
 
 def parse_data_emissao(data_str):
@@ -79,7 +81,7 @@ def formatar_valor_para_planilha(excel_col_name, value, expected_type):
 
     return str(value).strip()
 
-def salvar_no_excel(lista_dados, arquivo_excel="CONTROLE FLUXO ORIGINAL.xlsx", sheet_name="#NFs#", header_row=2):
+def salvar_no_excel(lista_dados, arquivo_excel="CONTROLE FLUXO ORIGINAL.xlsx", sheet_name="#NFs#", header_row=1):
     if not lista_dados:
         print("[EXPORT] Nenhuma nota para processar.")
         return
@@ -111,7 +113,7 @@ def salvar_no_excel(lista_dados, arquivo_excel="CONTROLE FLUXO ORIGINAL.xlsx", s
             if col in excel_headers:
                 col_indices[col] = excel_headers.index(col) + 1
                 
-        # 2. Carregar dados em bloco (Dinâmico para ler toda a planilha real)
+# 2. Carregar dados em bloco (Dinâmico para ler toda a planilha real)
         print(f"[EXPORT] Mapeando espaços vazios e NFs existentes...", flush=True)
         ultima_linha_com_dados = sheet.range('A1048576').end('up').row
         max_rows = max(10000, ultima_linha_com_dados + 100) 
@@ -119,12 +121,20 @@ def salvar_no_excel(lista_dados, arquivo_excel="CONTROLE FLUXO ORIGINAL.xlsx", s
         dados_planilha = {}
         for col_name, col_idx in col_indices.items():
             col_data = sheet.range((data_start_row, col_idx), (max_rows, col_idx)).value
+            
+            # --- CORREÇÃO: Blindagem para colunas 100% vazias no Excel ---
+            tamanho_esperado = max_rows - data_start_row + 1
+            if col_data is None:
+                col_data = [None] * tamanho_esperado
+            elif not isinstance(col_data, list):
+                col_data = [col_data] + [None] * (tamanho_esperado - 1)
+                
             dados_planilha[col_name] = col_data
             
         # 3. Identificar Duplicatas já salvas na planilha
         dados_existentes = set()
-        if 'NF' in col_indices and 'CNPJ' in col_indices:
-            for nf, cnpj in zip(dados_planilha['NF'], dados_planilha['CNPJ']):
+        if 'NF' in col_indices and 'CNPJ Fornecedor' in col_indices:
+            for nf, cnpj in zip(dados_planilha['NF'], dados_planilha['CNPJ Fornecedor']):
                 if nf is not None and cnpj is not None:
                     try:
                         dados_existentes.add((int(float(nf)), int(float(cnpj))))
@@ -149,7 +159,7 @@ def salvar_no_excel(lista_dados, arquivo_excel="CONTROLE FLUXO ORIGINAL.xlsx", s
 
         for index, dicionario in enumerate(lista_dados, start=1):
             num_nota = formatar_valor_para_planilha('NF', dicionario.get(COLUNAS_MAPEAMENTO['NF']['dict_key']), int)
-            cnpj = formatar_valor_para_planilha('CNPJ', dicionario.get(COLUNAS_MAPEAMENTO['CNPJ']['dict_key']), int)
+            cnpj = formatar_valor_para_planilha('CNPJ Fornecedor', dicionario.get(COLUNAS_MAPEAMENTO['CNPJ Fornecedor']['dict_key']), int)
 
             if num_nota is not None and cnpj is not None and (num_nota, cnpj) in dados_existentes:
                 print(f"[{index}/{total_notas}] ⏭️ Ignorada (Duplicada): NF {num_nota}".ljust(70), flush=True)
@@ -192,6 +202,7 @@ def salvar_no_excel(lista_dados, arquivo_excel="CONTROLE FLUXO ORIGINAL.xlsx", s
             
     except Exception as e:
         print(f"[ERRO CRÍTICO] Falha ao processar com xlwings: {e}")
+        raise e
     finally:
         try:
             app.screen_updating = True
