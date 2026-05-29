@@ -87,3 +87,9 @@ streamlit run app.py
 ## 🔒 Segurança de Dados
 
 Este repositório não expõe informações financeiras reais. O arquivo `PLANILHA DE CONTROLE.xlsx` presente na pasta `backend/` é apenas um template estrutural (vazio) com os cabeçalhos necessários para o funcionamento do motor de exportação. Nenhuma nota fiscal autêntica, valor corporativo ou dado sensível (PII) está armazenado no controle de versão deste projeto.
+
+## 🚀 Próximos Passos (Roadmap)
+
+* [ ] **Integração com LLMs:** Implementar análise via Inteligência Artificial para extração de dados mais resiliente em Notas Fiscais com layouts fora do padrão ou muito distorcidos.
+* [ ] **Dashboard Gerencial:** Criar uma nova aba no Streamlit com métricas e gráficos (volume de notas processadas, fornecedores mais frequentes).
+* [ ] **Dockerização:** Criar um `Dockerfile` e `docker-compose` para facilitar a subida de todo o ecossistema (Front, API e Banco) em qualquer servidor sem depender de instalações locais.
